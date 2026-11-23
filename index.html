@@ -156,17 +156,51 @@ input[type=file]{display:none}
     var hints=new Map();
     hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS,[ZXing.BarcodeFormat.CODE_39]);
     hints.set(ZXing.DecodeHintType.TRY_HARDER,true);
-    return new ZXing.BrowserMultiFormatReader(hints,250);
+    return new ZXing.BrowserMultiFormatReader(hints,120);
   }
+
+  var camStream=null;
 
   function start(){
     if(typeof ZXing==='undefined'){ say('No se pudo cargar el lector. Revise la conexión o escriba el folio abajo.', true); return; }
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ camError(); return; }
     result.hidden=true;
-    say('Buscando código…');
+    say('Abriendo cámara…');
     viewer.classList.add('on'); $('stop').hidden=false;
+    scanning=true;
+    navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}}}).then(function(stream){
+      if(!scanning){ stream.getTracks().forEach(function(t){t.stop();}); return; }
+      camStream=stream;
+      video.srcObject=stream;
+      var pl=video.play(); if(pl && pl.catch) pl.catch(function(){});
+      try{
+        var tr=stream.getVideoTracks()[0], caps=tr.getCapabilities?tr.getCapabilities():{};
+        if(caps.focusMode && caps.focusMode.indexOf('continuous')>-1){ tr.applyConstraints({advanced:[{focusMode:'continuous'}]}); }
+      }catch(e){}
+      say('Buscando código… mantenga el celular a unos 15 cm del gafete.');
+      if('BarcodeDetector' in window && BarcodeDetector.getSupportedFormats){
+        BarcodeDetector.getSupportedFormats().then(function(fm){
+          if(fm.indexOf('code_39')>-1){ nativeLoop(); } else { zxingLoop(stream); }
+        }).catch(function(){ zxingLoop(stream); });
+      }else{ zxingLoop(stream); }
+    }).catch(camError);
+  }
+
+  function nativeLoop(){
+    var det=new BarcodeDetector({formats:['code_39']});
+    (function tick(){
+      if(!scanning) return;
+      det.detect(video).then(function(r){
+        if(r.length && scanning){ handle(r[0].rawValue); if(scanning) setTimeout(tick,800); }
+        else{ setTimeout(tick,120); }
+      }).catch(function(){ setTimeout(tick,250); });
+    })();
+  }
+
+  function zxingLoop(stream){
     try{
-      reader=makeReader(); scanning=true;
-      reader.decodeFromConstraints({video:{facingMode:{ideal:'environment'}}}, video, function(res){
+      reader=makeReader();
+      reader.decodeFromStream(stream, video, function(res){
         if(res && scanning){ handle(res.getText()); }
       }).catch(camError);
     }catch(e){ camError(e); }
@@ -180,7 +214,11 @@ input[type=file]{display:none}
   function stop(){
     scanning=false;
     try{ if(reader) reader.reset(); }catch(e){}
-    reader=null; viewer.classList.remove('on'); $('stop').hidden=true;
+    reader=null;
+    try{ if(camStream) camStream.getTracks().forEach(function(t){t.stop();}); }catch(e){}
+    camStream=null;
+    try{ video.srcObject=null; }catch(e){}
+    viewer.classList.remove('on'); $('stop').hidden=true;
   }
 
   $('start').onclick=start;
