@@ -154,7 +154,7 @@ input[type=file]{display:none}
 
   function makeReader(){
     var hints=new Map();
-    hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS,[ZXing.BarcodeFormat.CODE_39]);
+    hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS,[ZXing.BarcodeFormat.CODE_39,ZXing.BarcodeFormat.CODE_128,ZXing.BarcodeFormat.CODE_93,ZXing.BarcodeFormat.CODABAR,ZXing.BarcodeFormat.QR_CODE]);
     hints.set(ZXing.DecodeHintType.TRY_HARDER,true);
     return new ZXing.BrowserMultiFormatReader(hints,120);
   }
@@ -180,14 +180,15 @@ input[type=file]{display:none}
       say('Buscando código… mantenga el celular a unos 15 cm del gafete.');
       if('BarcodeDetector' in window && BarcodeDetector.getSupportedFormats){
         BarcodeDetector.getSupportedFormats().then(function(fm){
-          if(fm.indexOf('code_39')>-1){ nativeLoop(); } else { zxingLoop(stream); }
+          var ok=['code_39','code_128','code_93','codabar','qr_code'].filter(function(x){return fm.indexOf(x)>-1;});
+          if(ok.length){ nativeLoop(ok); } else { zxingLoop(stream); }
         }).catch(function(){ zxingLoop(stream); });
       }else{ zxingLoop(stream); }
     }).catch(camError);
   }
 
-  function nativeLoop(){
-    var det=new BarcodeDetector({formats:['code_39']});
+  function nativeLoop(fmts){
+    var det=new BarcodeDetector({formats:fmts});
     (function tick(){
       if(!scanning) return;
       det.detect(video).then(function(r){
